@@ -11,30 +11,40 @@
     preservation.url = "github:nix-community/preservation";
   };
 
-  outputs =
-    { nixpkgs, nixy, ... }@inputs:
+  outputs = { nixpkgs, nixy, ... }@inputs:
     let
-      cluster =
-        system:
-        nixy.eval {
-          inherit (nixpkgs) lib;
-          imports = [
-            ./traits
-            ./nodes
-          ];
-          args = { inherit inputs system; };
-        };
-      mkSystem = node: nixpkgs.lib.nixosSystem { modules = [ node.module ]; };
-      # nixpkgs-patched = import ./nixpkgs-patches { inherit nixpkgs; };
-      # mkSystem-patched = node: nixpkgs-patched.lib.nixosSystem { modules = [ node.module ]; };
-      forAllSystems = f: nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed f;
+      lib = nixpkgs.lib;
+      helpers = import ./helpers.nix { inherit lib; };
+      nixpkgs-patched = import ./nixpkgs-patches { inherit nixpkgs; };
+
+      cluster = nixy.eval {
+        inherit lib;
+        imports = [ ./traits ./nodes ];
+        args = { inherit inputs nixpkgs-patched; } // helpers;
+      };
+
+      mkSystems = nixpkgs': lib.mapAttrs (name: n:
+        nixpkgs'.lib.nixosSystem {
+          system = n.schema.base.system;
+          modules = [ n.module ];
+          specialArgs = { inherit name inputs; inherit (n) schema; };
+        }
+      ) (lib.filterAttrs (name: n: n.schema.base.target or "nixos" == "nixos") cluster.nodes);
+
+      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
     in
     {
-      nixosConfigurations = nixpkgs.lib.mapAttrs (_: mkSystem) (cluster null).nodes;
-      packages = forAllSystems (s: {
-        diskoImage = (mkSystem (cluster s).nodes.Image).config.system.build.diskoImages;
-        iso = (mkSystem (cluster s).nodes.iso).config.system.build.isoImage;
-      });
+      nixosConfigurations = mkSystems nixpkgs;
+      nixosConfigurationsPatched = mkSystems nixpkgs-patched;
+
+      packages = forAllSystems (system:
+        let c = cluster.extend { args = { inherit system; }; };
+        in {
+          diskoImage = (nixpkgs.lib.nixosSystem { modules = [ c.nodes.Image.module ]; }).config.system.build.diskoImages;
+          iso = (nixpkgs.lib.nixosSystem { modules = [ c.nodes.iso.module ]; }).config.system.build.isoImage;
+        }
+      );
+
       formatter = forAllSystems (s: nixpkgs.legacyPackages.${s}.nixfmt-tree);
     };
 }
