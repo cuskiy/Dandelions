@@ -1,37 +1,22 @@
-{
-  mkBool,
-  mkList,
-  mkStr,
-  lib,
-  ...
-}:
+{ ... }:
 {
   schema.base = {
-    useLix = mkBool false;
-    nixSubstituters = mkList lib.types.str [ ];
+    useLix = false;
+    nixSubstituters = [ ];
 
-    hostname = mkStr "NixOS";
-    machineId = mkStr "00000000";
-    username = mkStr "alice";
-    password = mkStr null;
-    hashedPassword = mkStr null;
-    authorizedKeys = mkList lib.types.singleLineStr [ ];
+    username = "alice";
+    password = null;
+    hashedPassword = null;
+    authorizedKeys = [ ];
 
-    useSudo-rs = mkBool false;
-    useWireless = mkBool true;
-    useNetworkManager = mkBool true;
-    useTPM2 = mkBool true;
-    useBluetooth = mkBool true;
-    useAudio = mkBool true;
+    useSudo-rs = false;
+    useTPM2 = true;
+    useBluetooth = true;
+    useAudio = true;
   };
 
   traits.base =
-    {
-      lib,
-      pkgs,
-      schema,
-      ...
-    }:
+    { lib, pkgs, schema, ... }:
     let
       cfg = schema.base;
     in
@@ -58,27 +43,6 @@
       system.nixos-init.enable = true;
       system.etc.overlay.enable = true;
 
-      networking = {
-        hostName = lib.mkDefault cfg.hostname;
-        hostId = cfg.machineId;
-        nftables.enable = true;
-        dhcpcd.enable = false;
-        resolvconf.enable = false;
-        networkmanager.enable = cfg.useNetworkManager;
-        networkmanager.wifi.backend = lib.mkIf cfg.useWireless "iwd";
-        wireless.iwd.enable = cfg.useWireless;
-        useNetworkd = !cfg.useNetworkManager;
-        useDHCP = !cfg.useNetworkManager;
-      };
-      systemd.network.enable = !cfg.useNetworkManager;
-      services.resolved.enable = false;
-      environment.etc."resolv.conf".text = ''
-        nameserver 1.1.1.1
-        nameserver 2606:4700:4700::1111
-        nameserver 8.8.8.8
-        nameserver 2001:4860:4860::8888
-      '';
-
       users.mutableUsers = false;
       users.users.${cfg.username} = {
         password = if (cfg.hashedPassword != null || cfg.password != null) then cfg.password else "";
@@ -93,18 +57,12 @@
         ];
         shell = pkgs.fish;
       };
-      environment.systemPackages = [ pkgs.carapace ];
       programs.fish = {
         enable = true;
         shellAbbrs = {
           sudo = lib.mkIf (!cfg.useSudo-rs) "doas";
         };
-        interactiveShellInit = ''
-          set fish_color_command blue
-          set -x CARAPACE_BRIDGES 'zsh,fish,bash,inshellisense'
-          set -x CARAPACE_MATCH 1
-          carapace _carapace | source
-        '';
+        interactiveShellInit = "set fish_color_command blue";
       };
 
       security = {

@@ -1,16 +1,11 @@
-{ mkBool, ... }:
+{ ... }:
 {
   schema.software = {
-    extra = mkBool false;
+    extra = false;
   };
 
   traits.software =
-    {
-      lib,
-      pkgs,
-      schema,
-      ...
-    }:
+    { lib, pkgs, schema, ... }:
     let
       cfg = schema.software;
     in
@@ -34,8 +29,8 @@
           zip
         ]
         ++ lib.optionals cfg.extra [
-          # (bottles.override {removeWarningPopup = true;})
-          (pkgs.chromium.override {
+          (bottles.override { removeWarningPopup = true; })
+          (chromium.override {
             commandLineArgs = [
               # Four years ago, someone tried enabling touchpad history navigation
               # as the default in Chromium on Linux.

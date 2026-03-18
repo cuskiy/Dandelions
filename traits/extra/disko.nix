@@ -1,27 +1,21 @@
 {
   inputs,
-  mkBool,
-  mkStr,
+  system ? null,
   ...
 }:
 {
   schema.disko = {
-    device = mkStr "/dev/null";
-    withLUKS = mkBool true;
-    useZFS = mkBool false;
-    espSize = mkStr "1000M";
-    swapfileSize = mkStr null;
-    withPostMbrGap = mkBool false;
-    imageSize = mkStr "2G";
+    device = "/dev/null";
+    withLUKS = true;
+    useZFS = false;
+    espSize = "1000M";
+    swapfileSize = null;
+    withPostMbrGap = false;
+    imageSize = "2G";
   };
 
   traits.disko =
-    {
-      lib,
-      schema,
-      system,
-      ...
-    }:
+    { lib, schema, ... }:
     let
       cfg = schema.disko;
       btrfs = {
@@ -116,12 +110,12 @@
     in
     {
       imports = [ inputs.disko.nixosModules.disko ];
-
-      disko.imageBuilder = lib.mkIf (system == null) {
+      disko.imageBuilder = lib.mkIf (system != null) {
         enableBinfmt = true;
         pkgs = inputs.nixpkgs.legacyPackages.${system};
         kernelPackages = inputs.nixpkgs.legacyPackages.${system}.linuxPackages_latest;
       };
+
       disko.devices.nodev."/" = {
         fsType = "tmpfs";
         mountOptions = [

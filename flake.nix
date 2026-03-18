@@ -11,40 +11,24 @@
     preservation.url = "github:nix-community/preservation";
   };
 
-  outputs = { nixpkgs, nixy, ... }@inputs:
+  outputs =
+    { nixpkgs, nixy, ... }@inputs:
     let
-      lib = nixpkgs.lib;
-      helpers = import ./helpers.nix { inherit lib; };
-      nixpkgs-patched = import ./nixpkgs-patches { inherit nixpkgs; };
-
+      mkSystem = node: nixpkgs.lib.nixosSystem { modules = [ node.module ]; specialArgs = { inherit (node) schema; }; };
       cluster = nixy.eval {
-        inherit lib;
-        imports = [ ./traits ./nodes ];
-        args = { inherit inputs nixpkgs-patched; } // helpers;
+        imports = [ ./nodes ./traits ];
+        args = { inherit inputs; };
       };
-
-      mkSystems = nixpkgs': lib.mapAttrs (name: n:
-        nixpkgs'.lib.nixosSystem {
-          system = n.schema.base.system;
-          modules = [ n.module ];
-          specialArgs = { inherit name inputs; inherit (n) schema; };
-        }
-      ) (lib.filterAttrs (name: n: n.schema.base.target or "nixos" == "nixos") cluster.nodes);
-
-      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
+      # nixpkgs-patched = import ./nixpkgs-patches { inherit nixpkgs; };
+      # mkSystem = node: nixpkgs-patched.lib.nixosSystem { modules = [ node.module ]; specialArgs = { inherit (node) schema; }; };
+      forAllSystems = f: nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed f;
     in
-    {
-      nixosConfigurations = mkSystems nixpkgs;
-      nixosConfigurationsPatched = mkSystems nixpkgs-patched;
-
-      packages = forAllSystems (system:
-        let c = cluster.extend { args = { inherit system; }; };
-        in {
-          diskoImage = (nixpkgs.lib.nixosSystem { modules = [ c.nodes.Image.module ]; }).config.system.build.diskoImages;
-          iso = (nixpkgs.lib.nixosSystem { modules = [ c.nodes.iso.module ]; }).config.system.build.isoImage;
-        }
-      );
-
-      formatter = forAllSystems (s: nixpkgs.legacyPackages.${s}.nixfmt-tree);
+    rec {
+      nixosConfigurations = nixpkgs.lib.mapAttrs (_: mkSystem) cluster.nodes;
+      packages = forAllSystems (system: {
+        diskoImage = (mkSystem (cluster.extend { args = { inherit system; }; }).nodes.Image).config.system.build.diskoImages;
+        iso = nixosConfigurations.iso.config.system.build.isoImage;
+      });
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-tree);
     };
 }
