@@ -19,8 +19,9 @@
     { lib, pkgs, schema, ... }:
     let
       cfg = schema.base;
+      trustedUsers = [ cfg.username "@wheel" ];
     in
-    rec {
+    {
       time.timeZone = "UTC";
       i18n.defaultLocale = "C.UTF-8";
       console.keyMap = "us";
@@ -131,7 +132,7 @@
         package = if cfg.useLix then pkgs.lixPackageSets.stable.lix else pkgs.nixVersions.latest;
         channel.enable = false;
         settings = {
-          allowed-users = [ "root" ] ++ nix.settings.trusted-users;
+          allowed-users = [ "root" ] ++ trustedUsers;
           auto-allocate-uids = true;
           auto-optimise-store = true;
           builders-use-substitutes = true;
@@ -148,10 +149,7 @@
           ];
           pure-eval = true;
           substituters = cfg.nixSubstituters;
-          trusted-users = [
-            "${cfg.username}"
-            "@wheel"
-          ];
+          trusted-users = trustedUsers;
           use-cgroups = true;
           warn-dirty = false;
         };

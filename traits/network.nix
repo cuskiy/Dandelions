@@ -11,7 +11,6 @@
     { config, lib, schema, ... }:
     let
       cfg = schema.network // config.networking.firewall;
-      ifaceSet = lib.concatStringsSep ", " (map (x: ''"${x}"'') cfg.trustedInterfaces);
     in
     {
       networking = {
@@ -37,65 +36,67 @@
 
       networking.firewall.enable = false;
       networking.nftables.enable = true;
-      networking.nftables.ruleset = ''
-        table inet filter {
-          chain input {
-            type filter hook input priority filter; policy drop;
-            iifname "lo" accept
-            ${lib.optionalString (ifaceSet != "") "iifname { ${ifaceSet} } accept"}
+      networking.nftables.ruleset =
+        let
+          ifaceSet = lib.concatStringsSep ", " (map (x: ''"${x}"'') cfg.trustedInterfaces);
+          portsToNftSet =
+            ports: portRanges:
+            lib.concatStringsSep ", " (
+              map toString ports ++ map (x: "${toString x.from}-${toString x.to}") portRanges
+            );
+          allow = lib.concatStrings (
+            lib.mapAttrsToList (
+              iface: cfg:
+              let
+                ifaceMatch = lib.optionalString (iface != "default") ''iifname "${iface}" '';
+                tcpSet = portsToNftSet cfg.allowedTCPPorts cfg.allowedTCPPortRanges;
+                udpSet = portsToNftSet cfg.allowedUDPPorts cfg.allowedUDPPortRanges;
+              in
+              ''
+                ${lib.optionalString (tcpSet != "") "${ifaceMatch}tcp dport { ${tcpSet} } accept"}
+                ${lib.optionalString (udpSet != "") "${ifaceMatch}udp dport { ${udpSet} } accept"}
+              ''
+            ) cfg.allInterfaces
+          );
+        in
+        ''
+          table inet filter {
+            chain input {
+              type filter hook input priority filter; policy drop;
+              ct state vmap { invalid : drop, established : accept, related : accept }
 
-            icmp type echo-request accept
-            icmpv6 type != { nd-redirect, 139 } accept
+              iifname "lo" accept
+              ${lib.optionalString (ifaceSet != "") "iifname { ${ifaceSet} } accept"}
 
-            ip6 daddr fe80::/64 udp dport 546 accept
+              icmp type { echo-request, destination-unreachable, time-exceeded } accept
+              icmpv6 type != { nd-redirect, 139 } accept
 
-            meta nfproto ipv4 udp sport . udp dport { 68 . 67, 67 . 68 } accept
-            meta nfproto ipv4 fib saddr . mark . iif oif exists accept
+              meta nfproto ipv4 udp sport . udp dport { 68 . 67, 67 . 68 } accept
+              ip6 daddr fe80::/64 udp dport 546 accept
 
-            ct state invalid drop
-            ct state { established, related } accept
-            ct state { new, untracked } jump input-allow
+              meta nfproto ipv4 fib saddr . mark . iif oif exists accept
+
+              ${allow}
+              ${cfg.extraInputRules}
+            }
+
+            chain forward {
+              type filter hook forward priority filter; policy drop;
+              ct state vmap { invalid : drop, established : accept, related : accept }
+
+              ${lib.optionalString (ifaceSet != "") "iifname { ${ifaceSet} } accept"}
+
+              icmpv6 type != { router-renumbering, 139 } accept
+              ct status dnat accept
+              ${cfg.extraForwardRules}
+            }
+
+            chain output {
+              type filter hook output priority filter; policy accept;
+              oifname "lo" accept
+              ct state invalid drop
+            }
           }
-          chain input-allow {
-            ${lib.concatStrings (
-              lib.mapAttrsToList (
-                iface: cfg:
-                let
-                  ifaceMatch = if iface == "default" then "" else "iifname \"${iface}\" ";
-                  portsToNftSet =
-                    ports: portRanges:
-                    lib.concatStringsSep ", " (
-                      map (x: toString x) ports ++ map (x: "${toString x.from}-${toString x.to}") portRanges
-                    );
-                  tcpSet = portsToNftSet cfg.allowedTCPPorts cfg.allowedTCPPortRanges;
-                  udpSet = portsToNftSet cfg.allowedUDPPorts cfg.allowedUDPPortRanges;
-                in
-                ''
-                  ${lib.optionalString (tcpSet != "") "${ifaceMatch}tcp dport { ${tcpSet} } accept"}
-                  ${lib.optionalString (udpSet != "") "${ifaceMatch}udp dport { ${udpSet} } accept"}
-                ''
-              ) cfg.allInterfaces
-            )}
-            ${cfg.extraInputRules}
-          }
-
-          chain forward {
-            type filter hook forward priority filter; policy drop;
-            ct state invalid drop
-            ct state { established, related } accept
-            ct state { new, untracked } jump forward-allow
-          }
-          chain forward-allow {
-            icmpv6 type != { router-renumbering, 139 } accept
-            ct status dnat accept
-            ${cfg.extraForwardRules}
-          }
-
-          chain output {
-            type filter hook output priority filter; policy accept;
-            ct state invalid drop
-          }
-        }
-      '';
+        '';
     };
 }

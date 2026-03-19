@@ -3,6 +3,8 @@
   schema.virtualisation = {
     useLibvirt = false;
     useXen = false;
+    xenDom0Memory = 10000;
+    xenDom0MaxMemory = 10000;
     useVbox = false;
     useLxc = false;
   };
@@ -24,7 +26,8 @@
         };
         xen = {
           enable = cfg.useXen;
-          dom0Resources.memory = 10000;
+          dom0Resources.memory = cfg.xenDom0Memory;
+          dom0Resources.maxMemory = cfg.xenDom0MaxMemory;
         };
         virtualbox.host.enable = cfg.useVbox;
         lxc = {
@@ -64,15 +67,6 @@
           }
         ];
 
-      # https://github.com/NixOS/nixpkgs/issues/263359
-      # https://github.com/NixOS/nixpkgs/issues/416031
-      networking.firewall.interfaces."virbr*" = lib.mkIf cfg.useLibvirt {
-        allowedTCPPorts = [ 53 ];
-        allowedUDPPorts = [
-          53
-          67
-          547
-        ];
-      };
+      networking.firewall.trustedInterfaces = lib.mkIf cfg.useLibvirt [ "virbr*" ];
     };
 }

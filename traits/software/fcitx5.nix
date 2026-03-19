@@ -1,23 +1,26 @@
 {
   traits.fcitx5 =
     { lib, pkgs, ... }:
-    rec {
+    let
+      addons = [
+        pkgs.fcitx5-fluent
+        pkgs.fcitx5-pinyin-zhwiki
+        pkgs.kdePackages.fcitx5-chinese-addons
+      ];
+    in
+    {
       i18n.inputMethod = {
         enable = true;
         type = "fcitx5";
         package = lib.mkForce (
           pkgs.qt6Packages.fcitx5-with-addons.override {
             withConfigtool = false;
-            addons = i18n.inputMethod.fcitx5.addons;
+            inherit addons;
           }
         );
         fcitx5 = {
           waylandFrontend = true;
-          addons = [
-            pkgs.fcitx5-fluent
-            pkgs.fcitx5-pinyin-zhwiki
-            pkgs.kdePackages.fcitx5-chinese-addons
-          ];
+          inherit addons;
           settings.addons = {
             classicui.globalSection.Theme = "FluentDark-solid";
             pinyin.globalSection.FirstRun = "False";

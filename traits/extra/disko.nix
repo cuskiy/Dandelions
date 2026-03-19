@@ -110,6 +110,7 @@
     in
     {
       imports = [ inputs.disko.nixosModules.disko ];
+
       disko.imageBuilder = lib.mkIf (system != null) {
         enableBinfmt = true;
         pkgs = inputs.nixpkgs.legacyPackages.${system};
